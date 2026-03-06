@@ -8,6 +8,50 @@ import pygame
 from eye_blink_detector import EyeBlinkDetector
 from morse_translator import get_char_from_sequence, MORSE_CODE_DICT
 
+# Predefined suggestions for common phrases
+SUGGESTIONS = [
+    # Greetings & Social
+    "Hello", "Hi", "Good morning", "Good afternoon", "Good evening", "How are you?", "I am fine", "Nice to meet you", 
+    "Goodbye", "See you later", "Thank you very much", "You are welcome", "Please", "Excuse me", "Sorry",
+    "What is your name?", "My name is...", "Have a nice day", "I love you", "Happy birthday",
+    
+    # Needs & Requests
+    "I want to eat", "I want to drink water", "I want to drink tea", "I want to drink coffee", "I want to drink juice",
+    "I want to sleep", "I want to go to the bathroom", "I want to go to the toilet", "I want to go out", 
+    "I want to stay here", "I want to see my family", "I want to see a doctor", "I want to read a book", 
+    "I want to listen to music", "I want to watch TV", "I want to use the computer", "I want to talk to you",
+    "I want to sit down", "I want to lie down", "I want to stand up", "I want to walk",
+    
+    # Emergency & Health
+    "I need help", "Please help me", "I need medicine", "I am in pain", "I feel sick", "I feel cold", "I feel hot", 
+    "I cannot breathe well", "Call an ambulance", "Call my family", "I have a headache", "I feel dizzy",
+    "I need my inhaler", "I need my insulin", "I am bleeding", "It hurts here",
+    
+    # Feelings & Status
+    "I am tired", "I am hungry", "I am thirsty", "I am happy", "I am sad", "I am bored", "I am finished", 
+    "I am ready", "I am not ready", "Yes", "No", "Maybe", "I don't know", "I understand", "I don't understand",
+    "I am angry", "I am scared", "I am surprised", "I am confused", "I am comfortable", "I am uncomfortable",
+    
+    # Questions
+    "What time is it?", "What is happening?", "Who is there?", "Where are we?", "Why?", "How?", "Can you help me?",
+    "Can I have some water?", "Can I eat now?", "Is it morning?", "Is it night?", "Who are you?",
+    
+    # Actions & Environment
+    "Please open the window", "Please close the window", "Please turn off the lights", "Please turn on the lights", 
+    "Please open the door", "Please close the door", "Please adjust my pillow", "Please move me", 
+    "Please give me my glasses", "Please give me the phone", "Please turn up the volume", "Please turn down the volume",
+    "Please scratch my back", "Please clean my face", "Please brush my hair", "Please change the channel",
+    
+    # Short Responses
+    "Ok", "Alright", "Wait", "Later", "Now", "Never", "Always", "Sometimes", "More", "Less", "Too much", "Enough"
+]
+
+def get_suggestions(text):
+    if not text:
+        return []
+    text = text.lower()
+    return [s for s in SUGGESTIONS if s.lower().startswith(text) and s.lower() != text]
+
 # Initialize pygame for audio
 pygame.mixer.init()
 
@@ -37,6 +81,21 @@ st.markdown("""
         border-radius: 5px;
         margin-top: 10px;
     }
+    .suggestion-pill {
+        background-color: #2e3b4e;
+        color: #ffffff;
+        padding: 10px 15px;
+        border-radius: 20px;
+        margin: 5px;
+        display: inline-block;
+        border: 1px solid #4a90e2;
+        font-size: 0.9em;
+    }
+    .suggestion-morse {
+        color: #f1c40f;
+        font-weight: bold;
+        margin-right: 8px;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -49,84 +108,86 @@ if 'last_blink_time' not in st.session_state:
     st.session_state.last_blink_time = time.time()
 if 'is_running' not in st.session_state:
     st.session_state.is_running = False
+if 'last_suggestions' not in st.session_state:
+    st.session_state.last_suggestions = []
 
 # Sidebar: Settings and Info
 with st.sidebar:
-    st.title("👁️ Paramètres")
-    blink_thresh = st.slider("Sensibilité du clignement (Seuil EAR)", 0.05, 0.50, 0.15, format="%.2f")
-    short_blink = st.slider("Durée max point (.) (sec)", 0.1, 1.0, 0.4)
-    long_blink = st.slider("Durée max trait (-) (sec)", 0.5, 3.0, 1.2)
-    char_pause = st.slider("Pause entre caractères (sec)", 1.0, 5.0, 2.0)
-    word_pause = st.slider("Pause entre mots (sec)", 3.0, 10.0, 5.0)
+    st.title(" Morse Code Guide")
+    st.info("Blink dots (.) and dashes (-) to type.")
+    
+    # Define constants directly since sliders are removed
+    blink_thresh = 0.15
+    min_blink = 0.20
+    short_blink = 0.4
+    long_blink = 1.2
+    char_pause = 2.0
+    word_pause = 5.0
     
     st.divider()
-    st.header("📖 Guide Morse")
-    for char, code in list(MORSE_CODE_DICT.items())[:10]: # Just some for reference
-        st.write(f"**{char}**: {code}")
-    if st.button("Voir tout le guide"):
-        st.write(MORSE_CODE_DICT)
+    # Display full Morse code dictionary in a cleaner way
+    cols = st.columns(2)
+    items = list(MORSE_CODE_DICT.items())
+    half = len(items) // 2
+    
+    with cols[0]:
+        for char, code in items[:half]:
+            if char != ' ':
+                st.write(f"**{char}**: `{code}`")
+                
+    with cols[1]:
+        for char, code in items[half:]:
+            if char != ' ':
+                st.write(f"**{char}**: `{code}`")
 
 # Main App Layout
-st.title("EyeSpeak – Assistance à la Communication")
-st.write("Communiquez en clignant des yeux : court pour '.', long pour '-'.")
+st.title("EyeSpeak – Communication Assistance")
+st.write("Communicate by blinking: short for '.', long for '-'.")
 
-tab1, tab2 = st.tabs(["💬 Communication en temps réel", "🎓 Apprentissage Morse"])
+col1, col2 = st.columns([2, 1])
 
-with tab1:
-    col1, col2 = st.columns([2, 1])
-
-    with col1:
-        st.header("📹 Flux Vidéo")
-        run_btn = st.button("Démarrer / Arrêter la Caméra", key="run_comm")
-        if run_btn:
-            st.session_state.is_running = not st.session_state.is_running
-        
-        video_placeholder = st.empty()
-        
-    with col2:
-        st.header("📝 Communication")
-        st.subheader("Code Morse en cours :")
-        morse_display = st.empty()
-        
-        st.subheader("Texte traduit :")
-        text_display = st.empty()
-        
-        if st.button("🔊 Lire le texte (TTS)"):
-            if st.session_state.translated_text:
-                try:
-                    tts = gTTS(text=st.session_state.translated_text, lang='fr')
-                    tts.save("temp_voice.mp3")
-                    st.audio("temp_voice.mp3", autoplay=True)
-                except Exception as e:
-                    st.error(f"Erreur TTS : {e}")
-                    
-        if st.button("🗑️ Effacer"):
-            st.session_state.translated_text = ""
-            st.session_state.current_morse = ""
-
-with tab2:
-    st.header("🎓 Entraînement au Code Morse")
-    st.write("Exercez-vous à cligner pour chaque lettre.")
+with col1:
+    st.header(" Video Stream")
+    run_btn = st.button("Start / Stop Camera", key="run_comm")
+    if run_btn:
+        st.session_state.is_running = not st.session_state.is_running
     
-    target_char = st.selectbox("Sélectionnez une lettre à pratiquer :", list(MORSE_CODE_DICT.keys()))
-    st.info(f"Le code Morse pour **{target_char}** est : `{MORSE_CODE_DICT[target_char]}`")
+    video_placeholder = st.empty()
     
-    col_learn1, col_learn2 = st.columns([2, 1])
-    with col_learn1:
-        learn_video_placeholder = st.empty()
-    with col_learn2:
-        learn_status = st.empty()
-        learn_morse = st.empty()
-        if st.button("Vérifier"):
-            if st.session_state.current_morse == MORSE_CODE_DICT[target_char]:
-                st.success(f"Bravo ! Vous avez cligné '{target_char}' avec succès.")
-            else:
-                st.error(f"Pas tout à fait. Essayez encore. Attendu: `{MORSE_CODE_DICT[target_char]}`, Reçu: `{st.session_state.current_morse}`")
+with col2:
+    st.header(" Communication")
+    st.subheader("Morse Code in progress:")
+    morse_display = st.empty()
+    
+    st.subheader("Translated Text:")
+    text_display = st.empty()
+    
+    # Suggestions Area
+    st.subheader("Suggestions:")
+    suggestions_container = st.empty()
+    
+    if st.button(" Read Text (TTS)"):
+        if st.session_state.translated_text:
+            try:
+                tts = gTTS(text=st.session_state.translated_text, lang='en')
+                tts.save("temp_voice.mp3")
+                st.audio("temp_voice.mp3", autoplay=True)
+            except Exception as e:
+                st.error(f"TTS Error: {e}")
+                
+    if st.button(" Clear"):
+        st.session_state.translated_text = ""
+        st.session_state.current_morse = ""
 
 # Main processing loop
 if st.session_state.is_running:
     cap = cv2.VideoCapture(0)
-    detector = EyeBlinkDetector(blink_threshold=blink_thresh, short_blink_limit=short_blink, long_blink_limit=long_blink)
+    detector = EyeBlinkDetector(
+        blink_threshold=blink_thresh, 
+        short_blink_limit=short_blink, 
+        long_blink_limit=long_blink,
+        min_blink_duration=min_blink
+    )
     
     while st.session_state.is_running:
         ret, frame = cap.read()
@@ -157,16 +218,16 @@ if st.session_state.is_running:
             cv2.putText(frame, "CLIGNEMENT!", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
             
         # Update video
-        if video_placeholder:
-            video_placeholder.image(frame, channels="BGR")
-        if learn_video_placeholder:
-            learn_video_placeholder.image(frame, channels="BGR")
+        video_placeholder.image(frame, channels="BGR")
         
         # Logic for Morse events
         if blink_event:
             if blink_event == "reset":
                 st.session_state.current_morse = ""
                 st.session_state.translated_text = ""
+            elif blink_event == "clear":
+                st.session_state.current_morse = ""
+                st.toast("Code Morse effacé !", icon="🧹")
             else:
                 st.session_state.current_morse += blink_event
                 st.session_state.last_blink_time = time.time()
@@ -177,18 +238,50 @@ if st.session_state.is_running:
         
         if st.session_state.current_morse != "":
             if time_since_last > char_pause:
-                # End of character
+                # Fin d'un caractère (lettre)
                 char = get_char_from_sequence(st.session_state.current_morse)
-                if char != "?":
+                
+                # Check for suggestion selection (Morse "1" to "5")
+                suggestions = st.session_state.last_suggestions
+                if char == '1' and len(suggestions) >= 1:
+                    st.session_state.translated_text = suggestions[0]
+                elif char == '2' and len(suggestions) >= 2:
+                    st.session_state.translated_text = suggestions[1]
+                elif char == '3' and len(suggestions) >= 3:
+                    st.session_state.translated_text = suggestions[2]
+                elif char == '4' and len(suggestions) >= 4:
+                    st.session_state.translated_text = suggestions[3]
+                elif char == '5' and len(suggestions) >= 5:
+                    st.session_state.translated_text = suggestions[4]
+                elif char != "?":
                     st.session_state.translated_text += char
+                
                 st.session_state.current_morse = ""
-                st.session_state.last_blink_time = current_time # Reset for word pause detection
-            elif time_since_last > word_pause and st.session_state.translated_text != "" and not st.session_state.translated_text.endswith(" "):
+                st.session_state.last_blink_time = current_time # Reset pour détecter la fin du mot
+        elif st.session_state.translated_text != "" and not st.session_state.translated_text.endswith(" "):
+            if time_since_last > word_pause:
+                # Fin d'un mot (espace automatique)
                 st.session_state.translated_text += " "
+                st.session_state.last_blink_time = current_time
         
         # Update displays
         morse_display.markdown(f'<div class="morse-code">{st.session_state.current_morse}</div>', unsafe_allow_html=True)
         text_display.markdown(f'<div class="translated-text">{st.session_state.translated_text}</div>', unsafe_allow_html=True)
+        
+        # Update suggestions
+        new_suggestions = get_suggestions(st.session_state.translated_text)
+        if new_suggestions:
+            st.session_state.last_suggestions = new_suggestions[:5]
+            
+        if st.session_state.last_suggestions:
+            sug_html = ""
+            for i, s in enumerate(st.session_state.last_suggestions): # Show top 5
+                # Assign Morse "1" to "5" to select suggestions
+                morse_hint = MORSE_CODE_DICT[str(i+1)]
+                sug_html += f'<div class="suggestion-pill"><span class="suggestion-morse">{morse_hint}</span>{s}</div>'
+            suggestions_container.markdown(sug_html, unsafe_allow_html=True)
+        else:
+            suggestions_container.empty()
         
         # Small delay for responsiveness
         time.sleep(0.01)

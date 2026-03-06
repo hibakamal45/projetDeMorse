@@ -6,7 +6,7 @@ import os
 import urllib.request
 
 class EyeBlinkDetector:
-    def __init__(self, blink_threshold=0.15, short_blink_limit=0.4, long_blink_limit=1.2):
+    def __init__(self, blink_threshold=0.15, short_blink_limit=0.4, long_blink_limit=1.2, min_blink_duration=0.2):
         # MediaPipe Tasks API setup
         from mediapipe.tasks import python
         from mediapipe.tasks.python import vision
@@ -31,11 +31,15 @@ class EyeBlinkDetector:
         self.blink_threshold = blink_threshold
         self.short_blink_limit = short_blink_limit
         self.long_blink_limit = long_blink_limit
+        self.min_blink_duration = min_blink_duration
         
         self.is_blinking = False
         self.blink_start_time = 0
         self.last_blink_end_time = time.time()
-        self.last_ear = 1.0
+        self.last_ear = 0.0
+        
+        # Track last blinks for gesture detection (triple blink to clear)
+        self.blink_timestamps = []
 
     def _ensure_model_exists(self):
         """Download the model if it's not present."""
@@ -86,14 +90,31 @@ class EyeBlinkDetector:
                 if self.is_blinking:
                     self.is_blinking = False
                     duration = time.time() - self.blink_start_time
-                    self.last_blink_end_time = time.time()
+                    current_time = time.time()
+                    self.last_blink_end_time = current_time
                     
-                    if duration < self.short_blink_limit:
-                        blink_detected = "."
-                    elif duration < self.long_blink_limit:
-                        blink_detected = "-"
-                    else:
-                        blink_detected = "reset"
+                    # Store blink for gesture detection (triple blink)
+                    self.blink_timestamps.append(current_time)
+                    # Keep only the last 3 timestamps
+                    if len(self.blink_timestamps) > 3:
+                        self.blink_timestamps.pop(0)
+                    
+                    # Check for Triple Blink gesture (3 blinks in less than 1.5 seconds)
+                    if len(self.blink_timestamps) == 3:
+                        if (self.blink_timestamps[2] - self.blink_timestamps[0]) < 1.5:
+                            blink_detected = "clear"
+                            self.blink_timestamps = [] # Reset after gesture
+                    
+                    # If no gesture was detected, handle as normal blink
+                    if blink_detected is None:
+                        if duration < self.min_blink_duration:
+                            blink_detected = None # Too short, ignore (fatigue/micro-blink)
+                        elif duration < self.short_blink_limit:
+                            blink_detected = "."
+                        elif duration < self.long_blink_limit:
+                            blink_detected = "-"
+                        else:
+                            blink_detected = "reset"
             
             self.last_ear = ear
                         
